@@ -1,26 +1,17 @@
 mod dongle;
 mod install;
-mod uhid;
+mod tray;
 
 use std::io;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use dongle::{Battery, Dongle};
-use uhid::VirtualBattery;
+use hidapi::HidError;
 
-const NAME: &str = "Razer BlackShark V2 HyperSpeed";
-/// Becomes the power_supply name: hid-blackshark-v2-hyperspeed-battery
-const UNIQ: &str = "blackshark-v2-hyperspeed";
-const VENDOR: u32 = 0x1532;
-const PRODUCT: u32 = 0x0565;
+use crate::tray::HeadsetTrayIcon;
 
-/// Two small HID requests per check; the reference WebHID tool polls as often.
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(5);
-
-/// hid-input may drop the first input report if it arrives before the virtual device
-/// finished probing, so repeat it shortly after creation.
-const RESEND_AFTER_CREATE: Duration = Duration::from_millis(250);
 
 const USAGE: &str = "\
 usage: blackshark-battery <command>
@@ -81,9 +72,9 @@ fn parse_yes(rest: &[&str]) -> Option<bool> {
     }
 }
 
-fn print_status() -> io::Result<()> {
+fn print_status() -> Result<(), HidError> {
     let Some(mut dongle) = Dongle::open()? else {
-        return Err(io::Error::other("dongle 1532:0565 not found"));
+        return Err(io::Error::other("dongle 1532:0565 not found").into());
     };
     match dongle.battery()? {
         Some(b) => println!("{}%{}", b.percent, if b.charging { " charging" } else { "" }),
@@ -92,53 +83,35 @@ fn print_status() -> io::Result<()> {
     Ok(())
 }
 
-fn run(interval: Duration) -> io::Result<()> {
-    let mut battery: Option<VirtualBattery> = None;
+fn run(interval: Duration) -> ! {
     let mut last: Option<Battery> = None;
     let mut next_poll = Instant::now();
-    let mut resend_at: Option<Instant> = None;
+
+    let mut tray_icon = HeadsetTrayIcon::new();
 
     loop {
         let now = Instant::now();
         if now >= next_poll {
             next_poll = now + interval;
             let state = poll_headset();
+            dbg!(&state);
             if state != last {
                 match state {
-                    Some(b) => eprintln!("battery {}%{}", b.percent, if b.charging { ", charging" } else { "" }),
+                    Some(b) => eprintln!("battery {}% ({}charging)", b.percent, if b.charging { "" } else { "dis" }),
                     None => eprintln!("headset unavailable"),
                 }
                 last = state;
-            }
-            match state {
-                Some(b) => {
-                    if battery.is_none() {
-                        battery = Some(VirtualBattery::create(NAME, UNIQ, VENDOR, PRODUCT)?);
-                        resend_at = Some(now + RESEND_AFTER_CREATE);
-                    }
-                    battery.as_mut().unwrap().update(b)?;
+
+                match state {
+                    Some(b) => tray_icon.change_battery_level(b.percent, Some(b.charging)),
+                    None => tray_icon.set_disconnected(),
                 }
-                // Removing the virtual device makes the applet drop the entry.
-                None => battery = None,
             }
-        }
-        if let (Some(at), Some(vb), Some(b)) = (resend_at, battery.as_mut(), last)
-            && now >= at
-        {
-            vb.update(b)?;
-            resend_at = None;
         }
 
-        let wake = resend_at.map_or(next_poll, |r| r.min(next_poll));
-        let timeout = wake.saturating_duration_since(Instant::now());
-        match battery.as_mut() {
-            Some(vb) => {
-                if dongle::poll_readable(vb.fd(), timeout)? {
-                    vb.handle_event()?;
-                }
-            }
-            None => std::thread::sleep(timeout),
-        }
+        let timeout = next_poll.saturating_duration_since(Instant::now());
+        println!("Next update in {:?}", &timeout);
+        std::thread::sleep(timeout)
     }
 }
 

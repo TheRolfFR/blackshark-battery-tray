@@ -2,10 +2,16 @@
 name = "blackshark-battery"
 version = "0.1.0"
 edition = "2024"
-description = "Expose Razer BlackShark V2 HyperSpeed battery level to UPower via a virtual HID battery"
+description = "Expose Razer BlackShark V2 HyperSpeed battery level n the Linux desktop tray, with automatic audio device switch on power on/off"
 
 [dependencies]
-libc = "0.2"
+libc = "0.2.191"
+image = "0.25.10"
+imageproc = "0.27.0"
+rusttype = "0.9.3"
+tray-icon = { version = "0.26.1", features = ["ksni"] }
+hidapi = "2"
+ab_glyph = "0.2.32"
 
 [profile.release]
 strip = true

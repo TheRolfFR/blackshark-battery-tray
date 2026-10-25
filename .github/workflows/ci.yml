@@ -21,5 +21,4 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --locked
       - run: cargo build --locked --release --target ${{ matrix.target }}

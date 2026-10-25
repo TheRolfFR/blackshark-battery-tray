@@ -1,3 +1,2 @@
-# UPower derives a HID battery's kind from its sibling input node. Mark the input node
-# of the virtual device created by blackshark-battery as a headset sound device.
-SUBSYSTEM=="input", KERNEL=="input*", ATTR{uniq}=="blackshark-v2-hyperspeed", ENV{SOUND_INITIALIZED}="1", ENV{SOUND_FORM_FACTOR}="headset"
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="056e", TAG+="uaccess"
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="0565", TAG+="uaccess"

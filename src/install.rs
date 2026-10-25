@@ -1,12 +1,13 @@
 //! `install` / `uninstall`: the binary, a systemd service and a udev rule, all
-//! system-wide. One privileged step through pkexec (or sudo).
+//! system-wide. One privileged step through sudo.
 
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = "/usr/local/bin/blackshark-battery";
-const UNIT: &str = "/etc/systemd/system/blackshark-battery.service";
+const UNIT_DIR: &str = "~/.config/systemd/user";
+const UNIT: &str = "~/.config/systemd/user/blackshark-battery.service";
 const UDEV_RULE: &str = "/etc/udev/rules.d/60-blackshark-battery.rules";
 
 const UNIT_BODY: &str = include_str!("../dist/blackshark-battery.service");
@@ -24,61 +25,84 @@ pub fn install(yes: bool) -> u8 {
 
     println!("This writes, as root:");
     println!("  {BIN} (this binary)");
-    println!("  {UNIT}: system service that polls the headset and feeds the virtual battery");
     println!("  {UDEV_RULE}:\n{}", indent(UDEV_RULE_BODY));
+    println!("This writes, as user:");
+    println!("  {UNIT}: system service that polls the headset and feeds the virtual battery");
     println!("then enables and starts blackshark-battery.service.\n");
-    if !confirm("Apply with pkexec/sudo?", yes) {
+    if !confirm("Apply with sudo?", yes) {
         println!("Skipped.");
+        return 1;
+    }
+
+    let privileged_script = format!(
+        "set -e; \
+         install -m755 {exe} {BIN}.new && mv -f {BIN}.new {BIN}; \
+         printf '%s' {rule} > {UDEV_RULE}; \
+         udevadm control --reload-rules; \
+        ",
+        exe = sh_quote(&exe.to_string_lossy()),
+        rule = sh_quote(UDEV_RULE_BODY),
+    );
+    if !run_privileged(&privileged_script) {
+        println!("Privileged step failed.");
         return 1;
     }
 
     let script = format!(
         "set -e; \
-         install -m755 {exe} {BIN}.new && mv -f {BIN}.new {BIN}; \
+         mkdir -p {UNIT_DIR}; \
          printf '%s' {unit} > {UNIT}; \
-         printf '%s' {rule} > {UDEV_RULE}; \
-         udevadm control --reload-rules; \
-         systemctl daemon-reload; \
-         systemctl enable blackshark-battery.service; \
-         systemctl restart blackshark-battery.service",
-        exe = sh_quote(&exe.to_string_lossy()),
+         systemctl --user daemon-reload; \
+         systemctl --user enable blackshark-battery.service; \
+         systemctl --user restart blackshark-battery.service",
         unit = sh_quote(UNIT_BODY),
-        rule = sh_quote(UDEV_RULE_BODY),
     );
-    if !run_privileged(&script) {
-        println!("Privileged step failed.");
+    if !run(&script) {
+        println!("User step failed.");
         return 1;
     }
+
     println!("[service] blackshark-battery.service enabled and started");
     println!("\nThe headset shows up in the power applet within a few seconds while it's on.");
-    println!("Check: blackshark-battery status, journalctl -u blackshark-battery");
+    println!("Check: blackshark-battery status, journalctl --user -u blackshark-battery -f");
     0
 }
 
 pub fn uninstall(yes: bool) -> u8 {
     println!("blackshark-battery uninstall\n");
-    let present: Vec<&str> = [BIN, UNIT, UDEV_RULE].into_iter().filter(|p| Path::new(p).exists()).collect();
+    let present: Vec<&str> = [BIN, UDEV_RULE, UNIT].into_iter().filter(|p| Path::new(p).exists()).collect();
     if present.is_empty() {
         println!("Nothing installed.");
         return 0;
     }
-    println!("This stops the service and removes, as root:");
-    for p in &present {
+    println!("This removes bin and udev, as root:");
+    for p in &present[0..2] {
         println!("  {p}");
     }
-    if !confirm("Apply with pkexec/sudo?", yes) {
+    println!("This stops service, as user:");
+    println!("  {UNIT}");
+    if !confirm("Apply with sudo?", yes) {
         println!("Skipped.");
         return 1;
     }
-    let script = format!(
-        "systemctl disable --now blackshark-battery.service 2>/dev/null; \
-         rm -f {BIN} {UNIT} {UDEV_RULE}; \
+    let priviledged_script = format!(
+        "rm -f {BIN} {UDEV_RULE}; \
          systemctl daemon-reload; udevadm control --reload-rules"
     );
-    if !run_privileged(&script) {
+    if !run_privileged(&priviledged_script) {
         println!("Privileged step failed.");
         return 1;
     }
+    let script = format!(
+        "systemctl --user stop lackshark-battery.service 2>/dev/null; \
+         systemctl --user disable --now blackshark-battery.service 2>/dev/null; \
+         rm -f {UNIT}"
+    );
+    if !run(&script) {
+        println!("User step failed.");
+        return 1;
+    }
+
     println!("[remove] done");
     0
 }
@@ -99,20 +123,20 @@ fn confirm(question: &str, yes: bool) -> bool {
     matches!(line.trim(), "y" | "Y" | "yes")
 }
 
-/// Run a shell snippet as root: directly if we already are, else via pkexec (or sudo).
+/// Run a shell snippet as root: directly if we already aren, else sudo.
 fn run_privileged(script: &str) -> bool {
     let mut cmd = if unsafe { libc::geteuid() } == 0 {
         Command::new("sh")
     } else {
-        let mut c = Command::new(if which("pkexec") { "pkexec" } else { "sudo" });
+        let mut c = Command::new("sudo");
         c.arg("sh");
         c
     };
     cmd.args(["-c", script]).status().is_ok_and(|s| s.success())
 }
 
-fn which(cmd: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(cmd).is_file()))
+fn run(script: &str) -> bool {
+    Command::new("sh").args(["-c", script]).status().is_ok_and(|s| s.success())
 }
 
 fn sh_quote(s: &str) -> String {

@@ -1,33 +1,15 @@
 [Unit]
-Description=Razer BlackShark V2 HyperSpeed battery level for UPower
-Documentation=https://github.com/arkady-emelyanov/blackshark-battery
+Description=Razer BlackShark V2 HyperSpeed battery level in tray
+Documentation=https://github.com/TheRolfFR/blackshark-battery-tray
+After=graphical-session.target
+PartOf=graphical-session.target
 
 [Service]
 ExecStart=/usr/local/bin/blackshark-battery run
 Restart=on-failure
 RestartSec=5
-
-# Needs only /dev/uhid (to create the virtual battery) and the dongle's hidraw node.
-DevicePolicy=closed
-DeviceAllow=/dev/uhid rw
-DeviceAllow=char-hidraw rw
-CapabilityBoundingSet=
 NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
 PrivateTmp=yes
-PrivateNetwork=yes
-RestrictAddressFamilies=AF_UNIX
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-ProtectClock=yes
-ProtectHostname=yes
-RestrictNamespaces=yes
-RestrictRealtime=yes
-LockPersonality=yes
-MemoryDenyWriteExecute=yes
-SystemCallArchitectures=native
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical-session.target
