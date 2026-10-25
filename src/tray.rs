@@ -11,8 +11,13 @@ const DISCONNECTED_TEXT: &'static str = "Disconnected";
 
 // Battery level icon const
 const ICON_SIZE: u32 = 32;
-const ICON_COLOR: Rgba<u8> = Rgba([255u8, 255, 255, 255]);
 const ICON_FONT: &[u8] = include_bytes!("/usr/share/fonts/noto/NotoSans-Medium.ttf");
+
+// Battery levels colors
+const ICON_COLOR_GOOD: Rgba<u8> = Rgba([0, 200, 0, 255]);
+const ICON_COLOR_MEDIUM: Rgba<u8> = Rgba([255, 165, 0, 255]);
+const ICON_COLOR_LOW: Rgba<u8> = Rgba([255, 100, 0, 255]);
+const ICON_COLOR_CRITICAL: Rgba<u8> = Rgba([200, 0, 0, 255]);
 
 pub struct HeadsetTrayIcon {
     disconnected_icon: Icon,
@@ -76,7 +81,13 @@ fn create_battery_level_text(percentage: u8) -> RgbaImage {
     let text_start_x = ((ICON_SIZE as i32) - (text_width as i32)) / 2i32;
     let text_start_y = ((ICON_SIZE as i32) - (text_height as i32)) / 2i32;
 
-    draw_text_mut(&mut image, ICON_COLOR, text_start_x, text_start_y, scale, &font, &text);
+    let color = match percentage {
+        60.. => ICON_COLOR_GOOD,
+        30..60 => ICON_COLOR_MEDIUM,
+        15..30 => ICON_COLOR_LOW,
+        00..15 => ICON_COLOR_CRITICAL
+    };
+    draw_text_mut(&mut image, color, text_start_x, text_start_y, scale, &font, &text);
 
     image.save("/tmp/percentage.png").expect("Failed to write image");
 

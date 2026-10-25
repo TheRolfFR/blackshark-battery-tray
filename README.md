@@ -12,6 +12,12 @@ Show the battery level of a Razer BlackShark V2 HyperSpeed headset in tray on Li
 
 `lsusb -d 1532:` shows which one you have.
 
+## Battery Icon Color Coding
+
+- **Green** (60-100%): Good battery level
+- **Orange** (30-59%): Medium battery level
+- **Red-Orange** (15-29%): Low battery
+- **Red** (<15%): Critical battery
 
 ## Image source convertion
 
